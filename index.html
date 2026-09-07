@@ -208,6 +208,36 @@
   .order-badge{font-size:20px;color:var(--ink-soft);font-variant-numeric:tabular-nums;margin-right:6px;}
   .usage-val.warn{color:var(--warn);}
   .row-warn{border-color:var(--warn);background:var(--warn-soft);}
+
+  /* auth gate */
+  #authScreen{
+    position:fixed;inset:0;z-index:100;background:var(--bg);
+    display:flex;align-items:center;justify-content:center;padding:20px;
+  }
+  #authScreen.hidden{display:none;}
+  .auth-card{
+    background:var(--card);border:1px solid var(--line);border-radius:16px;
+    padding:26px 22px;width:100%;max-width:400px;
+  }
+  .auth-card h1{font-size:24px;margin:0 0 4px;text-align:center;}
+  .auth-card .auth-sub{text-align:center;color:var(--ink-soft);margin:0 0 20px;font-size:20px;}
+  .auth-card .btn{width:100%;margin-top:4px;}
+  .auth-card .form-hint{text-align:center;margin-top:16px;margin-bottom:0;}
+  .google-btn{
+    width:100%;display:flex;align-items:center;justify-content:center;gap:10px;
+    background:#fff;color:#3c4043;border:1px solid #dadce0;border-radius:10px;
+    padding:12px 12px;font-size:20px;font-weight:600;font-family:inherit;
+  }
+  .google-btn:active{background:#f8f9fa;}
+  .google-btn:disabled{opacity:.5;}
+  .auth-domain-note{
+    text-align:center;color:var(--ink-soft);font-size:20px;margin:14px 0 0;line-height:1.5;
+  }
+  .auth-user-row{
+    display:flex;align-items:center;justify-content:space-between;
+    margin-top:14px;padding-top:14px;border-top:1px solid var(--line);
+    font-size:20px;color:var(--ink-soft);
+  }
   .row-error-note.warn-note{color:var(--warn);}
   .note-wrap{margin-top:10px;}
   .note-wrap label{display:block;font-size:20px;color:var(--ink-soft);margin-bottom:3px;}
@@ -226,6 +256,23 @@
 </style>
 </head>
 <body>
+<div id="authScreen">
+  <div class="auth-card">
+    <h1>共用部検針</h1>
+    <p class="auth-sub">会社のGoogleアカウントでログインしてください</p>
+    <div id="authError" class="warn-box error-box" style="display:none;"></div>
+    <button class="google-btn" id="authGoogleBtn">
+      <svg width="20" height="20" viewBox="0 0 48 48" aria-hidden="true">
+        <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+        <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.9-2.26 5.36-4.78 7.02l7.73 6c4.51-4.18 7.09-10.36 7.09-17.49z"/>
+        <path fill="#FBBC05" d="M10.53 28.59A14.5 14.5 0 0 1 9.5 24c0-1.59.27-3.13.76-4.59l-7.98-6.19A23.94 23.94 0 0 0 0 24c0 3.87.92 7.53 2.56 10.78l7.97-6.19z"/>
+        <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.9-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.17 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.97 6.19C6.51 42.62 14.62 48 24 48z"/>
+      </svg>
+      <span>Googleでログイン</span>
+    </button>
+    <p class="auth-domain-note">mainichikogyo.co.jp のアカウントのみご利用いただけます。</p>
+  </div>
+</div>
 <div id="app">
   <div id="storageBanner" style="display:none;background:var(--warn-soft);color:var(--warn);font-size:20px;line-height:1.6;padding:10px 14px;">
     この端末のブラウザには自動保存できません。入力したら必ず「メーター管理」→「バックアップを書き出す」で保存し、次に開いたときは「バックアップを読み込む」で復元してください。
@@ -401,6 +448,11 @@
     <div class="form-actions">
       <button class="btn ghost" id="settingsCancel">キャンセル</button>
       <button class="btn primary" id="settingsSave">保存する</button>
+    </div>
+
+    <div class="auth-user-row">
+      <span id="authUserLabel"></span>
+      <button class="icon-btn danger" id="btnLogout">ログアウト</button>
     </div>
   </div>
 </div>
@@ -589,20 +641,108 @@ async function sha256Hex(str){
 }
 
 function loadFirebaseSdk(){
-  if(window.firebase && window.firebase.firestore) return Promise.resolve();
+  if(window.firebase && window.firebase.firestore && window.firebase.auth) return Promise.resolve();
   return new Promise((resolve, reject) => {
     const s1 = document.createElement('script');
     s1.src = 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js';
     s1.onload = () => {
       const s2 = document.createElement('script');
       s2.src = 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js';
-      s2.onload = () => resolve();
+      s2.onload = () => {
+        const s3 = document.createElement('script');
+        s3.src = 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js';
+        s3.onload = () => resolve();
+        s3.onerror = () => reject(new Error('auth sdk load failed'));
+        document.head.appendChild(s3);
+      };
       s2.onerror = () => reject(new Error('firestore sdk load failed'));
       document.head.appendChild(s2);
     };
     s1.onerror = () => reject(new Error('app sdk load failed'));
     document.head.appendChild(s1);
   });
+}
+
+// ---- authentication gate (Firebase Authentication: Google Sign-In, restricted to company domain) ----
+let appBooted = false;
+const ALLOWED_EMAIL_DOMAIN = 'mainichikogyo.co.jp';
+
+function ensureFirebaseApp(){
+  if(!firebase.apps || firebase.apps.length === 0){
+    firebase.initializeApp(FIREBASE_CONFIG);
+  }
+}
+
+function isAllowedEmail(email){
+  return !!email && email.toLowerCase().endsWith('@' + ALLOWED_EMAIL_DOMAIN);
+}
+
+async function initAuthGate(){
+  const authScreen = document.getElementById('authScreen');
+  const errEl = document.getElementById('authError');
+  try{
+    await loadFirebaseSdk();
+    ensureFirebaseApp();
+  }catch(e){
+    console.error(e);
+    errEl.textContent = '認証機能の読み込みに失敗しました。ネット接続を確認してからページを再読み込みしてください。';
+    errEl.style.display = '';
+    return;
+  }
+
+  firebase.auth().onAuthStateChanged(async (user) => {
+    if(user && !isAllowedEmail(user.email)){
+      // signed in with a non-company account: reject immediately
+      await firebase.auth().signOut();
+      errEl.textContent = ALLOWED_EMAIL_DOMAIN + ' のアカウントでログインしてください。個人のGoogleアカウントは利用できません。';
+      errEl.style.display = '';
+      return;
+    }
+    if(user){
+      authScreen.classList.add('hidden');
+      if(!appBooted){
+        appBooted = true;
+        await bootApp();
+      }
+      const label = document.getElementById('authUserLabel');
+      if(label) label.textContent = 'ログイン中: ' + (user.email || user.uid);
+    } else {
+      authScreen.classList.remove('hidden');
+    }
+  });
+
+  document.getElementById('authGoogleBtn').addEventListener('click', doGoogleLogin);
+}
+
+async function doGoogleLogin(){
+  const errEl = document.getElementById('authError');
+  errEl.style.display = 'none';
+  const btn = document.getElementById('authGoogleBtn');
+  btn.disabled = true;
+  const originalHtml = btn.innerHTML;
+  btn.querySelector('span').textContent = 'ログイン中…';
+  try{
+    ensureFirebaseApp();
+    const provider = new firebase.auth.GoogleAuthProvider();
+    provider.setCustomParameters({ hd: ALLOWED_EMAIL_DOMAIN });
+    const result = await firebase.auth().signInWithPopup(provider);
+    if(!isAllowedEmail(result.user && result.user.email)){
+      await firebase.auth().signOut();
+      errEl.textContent = ALLOWED_EMAIL_DOMAIN + ' のアカウントでログインしてください。個人のGoogleアカウントは利用できません。';
+      errEl.style.display = '';
+    }
+  }catch(e){
+    console.error(e);
+    if(e && e.code === 'auth/popup-closed-by-user'){
+      // user cancelled; no error message needed
+    } else {
+      errEl.textContent = 'ログインに失敗しました。もう一度お試しください。';
+      errEl.style.display = '';
+    }
+  }finally{
+    btn.disabled = false;
+    btn.innerHTML = originalHtml;
+  }
 }
 
 function updateSyncStatus(s, detail){
@@ -813,6 +953,8 @@ function openSettingsModal(){
   document.getElementById('settingsSyncEnabled').checked = !!state.settings.syncEnabled;
   document.getElementById('settingsSyncPin').value = state.settings.syncPin || '';
   updateSyncStatus(sync.status);
+  const authUser = (window.firebase && firebase.auth().currentUser) || null;
+  document.getElementById('authUserLabel').textContent = authUser ? ('ログイン中: ' + (authUser.email || authUser.uid)) : '';
   document.getElementById('settingsOverlay').classList.remove('hidden');
 }
 
@@ -1230,7 +1372,7 @@ function testStorageAvailable(){
   }catch(e){ return false; }
 }
 
-async function init(){
+async function bootApp(){
   state.storageAvailable = testStorageAvailable();
   if(!state.storageAvailable){
     document.getElementById('storageBanner').style.display = 'block';
@@ -1392,6 +1534,12 @@ async function init(){
       saveEditedMeter(code, newVals);
     }
   });
+
+  document.getElementById('btnLogout').addEventListener('click', () => {
+    if(confirm('ログアウトしますか?')){
+      firebase.auth().signOut();
+    }
+  });
 }
 
 if('serviceWorker' in navigator){
@@ -1400,7 +1548,7 @@ if('serviceWorker' in navigator){
   });
 }
 
-init();
+initAuthGate();
 </script>
 </body>
 </html>
