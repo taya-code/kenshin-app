@@ -272,8 +272,9 @@
   .photo-status{font-size:20px;color:var(--ink-soft);text-align:center;margin:8px 0;line-height:1.5;}
   .digit-count-row{display:flex;justify-content:center;align-items:center;gap:12px;margin:4px 0 10px;}
   .digit-count-row button{padding:7px 14px;border-radius:8px;border:1px solid var(--line);background:var(--card);font-size:20px;color:var(--ink-soft);}
-  .digit-count-label{font-size:20px;color:var(--ink-soft);}
-  .digit-dial-row{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin:6px 0 14px;}
+  .digit-count-label{font-size:20px;color:var(--ink-soft);min-width:2.5em;text-align:center;}
+  .digit-count-name{font-size:20px;color:var(--ink-soft);min-width:3.5em;}
+  .digit-dial-row{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin:6px 0 14px;align-items:center;}
   .digit-wheel{display:flex;flex-direction:column;align-items:center;gap:3px;}
   .digit-wheel button{
     width:42px;height:34px;border-radius:8px;border:1px solid var(--line);background:var(--card);
@@ -285,6 +286,8 @@
     font-size:26px;font-weight:700;font-variant-numeric:tabular-nums;
     border:1px solid var(--line);border-radius:8px;background:var(--bg);
   }
+  .decimal-dot-wheel .digit-value{width:20px;border:none;background:transparent;align-items:flex-end;padding-bottom:8px;}
+  .decimal-dot-spacer{height:34px;}
   .ocr-raw-text{font-size:20px;color:var(--ink-soft);text-align:center;margin-top:-6px;margin-bottom:10px;}
 </style>
 </head>
@@ -428,9 +431,16 @@
     <p class="photo-status" id="photoStatusText" style="display:none;"></p>
     <div id="photoDialSection" style="display:none;">
       <div class="digit-count-row">
-        <button type="button" id="digitCountMinus">－ 桁</button>
+        <span class="digit-count-name">整数部</span>
+        <button type="button" id="digitCountMinus">－</button>
         <span class="digit-count-label" id="digitCountLabel"></span>
-        <button type="button" id="digitCountPlus">＋ 桁</button>
+        <button type="button" id="digitCountPlus">＋</button>
+      </div>
+      <div class="digit-count-row">
+        <span class="digit-count-name">小数部</span>
+        <button type="button" id="decimalCountMinus">－</button>
+        <span class="digit-count-label" id="decimalCountLabel"></span>
+        <button type="button" id="decimalCountPlus">＋</button>
       </div>
       <div class="digit-dial-row" id="digitDialRow"></div>
       <p class="ocr-raw-text" id="ocrRawText"></p>
@@ -538,7 +548,7 @@ const SETTINGS_KEY = "kenshin_settings";
 const DEFAULT_SETTINGS = { readers: ["検針者1", "検針者2"], currentReaderIndex: 0, defaultTolerancePercent: 30, syncEnabled: false, syncPin: "" };
 
 let state = { group: "20", data: { "20": null, "matsu": null }, editingCode: null, sortMode: "route", settings: null,
-  photo: { targetCode: null, digits: [], imageDataUrl: null, rawOcrText: '' } };
+  photo: { targetCode: null, intDigits: [], decDigits: [], imageDataUrl: null, rawOcrText: '' } };
 
 // ---- online sync (optional; app fully works offline without this) ----
 // 手順: Firebaseコンソール（無料）でプロジェクトを作成し、Firestoreを有効化したうえで、
@@ -1172,21 +1182,27 @@ function loadTesseract(){
   return tesseractLoadPromise;
 }
 
-function defaultDigitCountForCode(code){
+function defaultDigitConfigForCode(code){
   const d = state.data[state.group];
   const m = d.meters.find(x => x.code === code);
   const r = d.readings[code];
-  if(m && m.digits) return Math.max(1, Number(m.digits));
   const ref = (r && r.cur !== null && r.cur !== undefined) ? r.cur : ((r && r.prev !== null && r.prev !== undefined) ? r.prev : null);
+  let intCount = (m && m.digits) ? Math.max(1, Number(m.digits)) : null;
+  let decCount = 0;
   if(ref !== null && ref !== undefined && ref !== ''){
-    const s = String(Math.trunc(Math.abs(Number(ref))));
-    if(s && s !== 'NaN') return Math.max(s.length, 1);
+    const s = String(Math.abs(Number(ref)));
+    if(s && s !== 'NaN'){
+      const parts = s.split('.');
+      if(!intCount) intCount = Math.max(parts[0].length, 1);
+      if(parts[1]) decCount = parts[1].length;
+    }
   }
-  return 5;
+  if(!intCount) intCount = 5;
+  return { intCount, decCount };
 }
 
 function openPhotoModal(code){
-  state.photo = { targetCode: code, digits: [], imageDataUrl: null, rawOcrText: '' };
+  state.photo = { targetCode: code, intDigits: [], decDigits: [], imageDataUrl: null, rawOcrText: '' };
   document.getElementById('photoPreviewWrap').innerHTML = '<span class="photo-status">下のボタンでメーターを撮影してください</span>';
   document.getElementById('photoDialSection').style.display = 'none';
   document.getElementById('photoStatusText').style.display = 'none';
@@ -1199,7 +1215,7 @@ function openPhotoModal(code){
 
 function closePhotoModal(){
   document.getElementById('photoOverlay').classList.add('hidden');
-  state.photo = { targetCode: null, digits: [], imageDataUrl: null, rawOcrText: '' };
+  state.photo = { targetCode: null, intDigits: [], decDigits: [], imageDataUrl: null, rawOcrText: '' };
 }
 
 function handlePhotoFileSelected(file){
@@ -1222,67 +1238,95 @@ async function runOcrOnCurrentPhoto(){
   document.getElementById('photoConfirmBtn').disabled = true;
 
   const targetCode = state.photo.targetCode;
-  let recognizedDigits = '';
+  let rawText = '';
   try{
     await loadTesseract();
     const worker = await Tesseract.createWorker('eng');
-    await worker.setParameters({ tessedit_char_whitelist: '0123456789' });
+    // allow digits and both '.' and ',' as a decimal separator (some locales/fonts render either)
+    await worker.setParameters({ tessedit_char_whitelist: '0123456789.,' });
     const { data } = await worker.recognize(state.photo.imageDataUrl);
     await worker.terminate();
-    recognizedDigits = (data && data.text ? data.text : '').replace(/[^0-9]/g, '');
+    rawText = (data && data.text ? data.text : '');
   }catch(e){
     console.error('OCR failed', e);
-    recognizedDigits = '';
+    rawText = '';
   }
 
   // the modal may have been cancelled or retargeted while OCR was running
   if(state.photo.targetCode !== targetCode) return;
 
-  const count = defaultDigitCountForCode(targetCode);
-  let digits;
-  if(recognizedDigits){
-    const trimmed = recognizedDigits.slice(-count).padStart(count, '0');
-    digits = trimmed.split('').map(Number);
+  const config = defaultDigitConfigForCode(targetCode);
+  // look for the first number in the recognized text, with an optional decimal part
+  const match = rawText.replace(/,/g, '.').match(/([0-9]+)(?:\.([0-9]+))?/);
+  let intDigits, decDigits, rawDisplay = '';
+  if(match){
+    const recInt = match[1].slice(0, 8); // cap length to guard against OCR noise
+    const recDec = (match[2] || '').slice(0, 4);
+    rawDisplay = recInt + (recDec ? '.' + recDec : '');
+    intDigits = recInt.split('').map(Number);
+    decDigits = recDec.split('').map(Number);
     statusEl.textContent = '自動認識結果を反映しました。誤りがあればダイヤルで修正してください。';
   } else {
-    digits = new Array(count).fill(0);
+    intDigits = new Array(config.intCount).fill(0);
+    decDigits = new Array(config.decCount).fill(0);
     statusEl.textContent = '自動認識できませんでした（ネット未接続、または数値を読み取れませんでした）。ダイヤルで数値を入力してください。';
   }
-  state.photo.digits = digits;
-  state.photo.rawOcrText = recognizedDigits;
+  state.photo.intDigits = intDigits;
+  state.photo.decDigits = decDigits;
+  state.photo.rawOcrText = rawDisplay;
   renderDigitDials();
   document.getElementById('photoDialSection').style.display = '';
   document.getElementById('photoConfirmBtn').disabled = false;
 }
 
-function renderDigitDials(){
-  document.getElementById('digitCountLabel').textContent = state.photo.digits.length + ' 桁';
-  const row = document.getElementById('digitDialRow');
-  row.innerHTML = state.photo.digits.map((val, idx) => `
-    <div class="digit-wheel" data-idx="${idx}">
-      <button type="button" class="digit-up" data-idx="${idx}">▲</button>
+function digitWheelHtml(kind, idx, val){
+  return `
+    <div class="digit-wheel" data-kind="${kind}" data-idx="${idx}">
+      <button type="button" class="digit-up" data-kind="${kind}" data-idx="${idx}">▲</button>
       <div class="digit-value">${val}</div>
-      <button type="button" class="digit-down" data-idx="${idx}">▼</button>
-    </div>
-  `).join('');
+      <button type="button" class="digit-down" data-kind="${kind}" data-idx="${idx}">▼</button>
+    </div>`;
+}
+
+function renderDigitDials(){
+  document.getElementById('digitCountLabel').textContent = state.photo.intDigits.length + ' 桁';
+  document.getElementById('decimalCountLabel').textContent = state.photo.decDigits.length + ' 桁';
+  const row = document.getElementById('digitDialRow');
+  const intHtml = state.photo.intDigits.map((val, idx) => digitWheelHtml('int', idx, val)).join('');
+  const decHtml = state.photo.decDigits.length
+    ? '<div class="digit-wheel decimal-dot-wheel"><div class="decimal-dot-spacer"></div><div class="digit-value">.</div><div class="decimal-dot-spacer"></div></div>'
+      + state.photo.decDigits.map((val, idx) => digitWheelHtml('dec', idx, val)).join('')
+    : '';
+  row.innerHTML = intHtml + decHtml;
   const rawEl = document.getElementById('ocrRawText');
   rawEl.textContent = state.photo.rawOcrText ? ('自動認識結果: ' + state.photo.rawOcrText) : '';
 }
 
-function changeDigit(idx, delta){
-  const v = state.photo.digits[idx];
-  state.photo.digits[idx] = (v + delta + 10) % 10;
+function changeDigit(kind, idx, delta){
+  const arr = kind === 'dec' ? state.photo.decDigits : state.photo.intDigits;
+  arr[idx] = (arr[idx] + delta + 10) % 10;
   renderDigitDials();
 }
 
-function changeDigitCount(delta){
-  const digits = state.photo.digits;
-  if(delta > 0){
-    if(digits.length >= 10) return;
-    digits.unshift(0); // meters are read left-to-right, so a new digit is added on the left (most significant)
+function changeDigitCount(kind, delta){
+  if(kind === 'dec'){
+    const digits = state.photo.decDigits;
+    if(delta > 0){
+      if(digits.length >= 4) return;
+      digits.push(0); // decimal precision grows on the right (least significant)
+    } else {
+      if(digits.length <= 0) return;
+      digits.pop();
+    }
   } else {
-    if(digits.length <= 1) return;
-    digits.shift();
+    const digits = state.photo.intDigits;
+    if(delta > 0){
+      if(digits.length >= 8) return;
+      digits.unshift(0); // meters are read left-to-right, so a new digit is added on the left (most significant)
+    } else {
+      if(digits.length <= 1) return;
+      digits.shift();
+    }
   }
   renderDigitDials();
 }
@@ -1290,7 +1334,10 @@ function changeDigitCount(delta){
 async function confirmPhotoValue(){
   const code = state.photo.targetCode;
   if(!code) return;
-  const value = Number(state.photo.digits.join(''));
+  const intStr = state.photo.intDigits.join('') || '0';
+  const decStr = state.photo.decDigits.join('');
+  const valueStr = decStr ? (intStr + '.' + decStr) : intStr;
+  const value = Number(valueStr);
   const input = document.querySelector('.cur-input[data-code="'+code+'"]');
   if(input) input.value = value;
   await handleInputChange(code, String(value));
@@ -1634,13 +1681,15 @@ async function bootApp(){
   });
   document.getElementById('photoCancelBtn').addEventListener('click', closePhotoModal);
   document.getElementById('photoConfirmBtn').addEventListener('click', confirmPhotoValue);
-  document.getElementById('digitCountMinus').addEventListener('click', ()=>changeDigitCount(-1));
-  document.getElementById('digitCountPlus').addEventListener('click', ()=>changeDigitCount(1));
+  document.getElementById('digitCountMinus').addEventListener('click', ()=>changeDigitCount('int', -1));
+  document.getElementById('digitCountPlus').addEventListener('click', ()=>changeDigitCount('int', 1));
+  document.getElementById('decimalCountMinus').addEventListener('click', ()=>changeDigitCount('dec', -1));
+  document.getElementById('decimalCountPlus').addEventListener('click', ()=>changeDigitCount('dec', 1));
   document.getElementById('digitDialRow').addEventListener('click', (e)=>{
     const upBtn = e.target.closest('.digit-up');
     const downBtn = e.target.closest('.digit-down');
-    if(upBtn) changeDigit(Number(upBtn.getAttribute('data-idx')), 1);
-    if(downBtn) changeDigit(Number(downBtn.getAttribute('data-idx')), -1);
+    if(upBtn) changeDigit(upBtn.getAttribute('data-kind'), Number(upBtn.getAttribute('data-idx')), 1);
+    if(downBtn) changeDigit(downBtn.getAttribute('data-kind'), Number(downBtn.getAttribute('data-idx')), -1);
   });
 
   function refreshAfterSortChange(){
