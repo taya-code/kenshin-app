@@ -253,6 +253,39 @@
   .form-hint{font-size:20px;color:var(--ink-soft);margin:-6px 0 10px;line-height:1.5;}
   .form-row textarea{width:100%;padding:9px 10px;border-radius:8px;border:1px solid var(--line);font-size:20px;background:var(--bg);font-family:inherit;resize:vertical;}
   .form-row textarea:focus{outline:2px solid var(--accent);outline-offset:-1px;background:var(--card);}
+
+  /* photo capture / digit dial */
+  .cur-input-wrap{display:flex;gap:6px;align-items:center;}
+  .cur-input-wrap .cur-input{flex:1;min-width:0;}
+  .camera-btn{
+    flex:0 0 auto;width:38px;height:38px;border-radius:8px;border:1px solid var(--line);
+    background:var(--accent-soft);color:var(--accent);font-size:18px;line-height:1;
+    display:flex;align-items:center;justify-content:center;padding:0;
+  }
+  .camera-btn:active{background:var(--accent);color:#fff;}
+  #photoOverlay .sheet{max-height:90vh;overflow:auto;}
+  .photo-preview-wrap{
+    width:100%;min-height:120px;max-height:260px;border-radius:10px;overflow:hidden;
+    background:#111;margin-bottom:10px;display:flex;align-items:center;justify-content:center;
+  }
+  .photo-preview-wrap img{width:100%;display:block;}
+  .photo-status{font-size:20px;color:var(--ink-soft);text-align:center;margin:8px 0;line-height:1.5;}
+  .digit-count-row{display:flex;justify-content:center;align-items:center;gap:12px;margin:4px 0 10px;}
+  .digit-count-row button{padding:7px 14px;border-radius:8px;border:1px solid var(--line);background:var(--card);font-size:20px;color:var(--ink-soft);}
+  .digit-count-label{font-size:20px;color:var(--ink-soft);}
+  .digit-dial-row{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin:6px 0 14px;}
+  .digit-wheel{display:flex;flex-direction:column;align-items:center;gap:3px;}
+  .digit-wheel button{
+    width:42px;height:34px;border-radius:8px;border:1px solid var(--line);background:var(--card);
+    font-size:18px;color:var(--ink-soft);padding:0;
+  }
+  .digit-wheel button:active{background:var(--accent-soft);color:var(--accent);}
+  .digit-value{
+    width:42px;height:50px;display:flex;align-items:center;justify-content:center;
+    font-size:26px;font-weight:700;font-variant-numeric:tabular-nums;
+    border:1px solid var(--line);border-radius:8px;background:var(--bg);
+  }
+  .ocr-raw-text{font-size:20px;color:var(--ink-soft);text-align:center;margin-top:-6px;margin-bottom:10px;}
 </style>
 </head>
 <body>
@@ -381,6 +414,34 @@
   </div>
 </div>
 
+<!-- photo capture / digit dial modal -->
+<input type="file" accept="image/*" capture="environment" id="photoFileInput" style="display:none">
+<div class="overlay hidden" id="photoOverlay">
+  <div class="sheet">
+    <h2>📷 撮影して入力</h2>
+    <div class="photo-preview-wrap" id="photoPreviewWrap">
+      <span class="photo-status">下のボタンでメーターを撮影してください</span>
+    </div>
+    <div class="form-actions">
+      <button class="btn" id="photoRetakeBtn">撮影しなおす</button>
+    </div>
+    <p class="photo-status" id="photoStatusText" style="display:none;"></p>
+    <div id="photoDialSection" style="display:none;">
+      <div class="digit-count-row">
+        <button type="button" id="digitCountMinus">－ 桁</button>
+        <span class="digit-count-label" id="digitCountLabel"></span>
+        <button type="button" id="digitCountPlus">＋ 桁</button>
+      </div>
+      <div class="digit-dial-row" id="digitDialRow"></div>
+      <p class="ocr-raw-text" id="ocrRawText"></p>
+    </div>
+    <div class="form-actions">
+      <button class="btn ghost" id="photoCancelBtn">キャンセル</button>
+      <button class="btn primary" id="photoConfirmBtn" disabled>この値を入力する</button>
+    </div>
+  </div>
+</div>
+
 <!-- add meter modal -->
 <div class="overlay hidden" id="addOverlay">
   <div class="sheet">
@@ -476,7 +537,8 @@ const TYPE_LABEL = { "1":"電灯", "2":"動力", "3":"ガス", "4":"水道" };
 const SETTINGS_KEY = "kenshin_settings";
 const DEFAULT_SETTINGS = { readers: ["検針者1", "検針者2"], currentReaderIndex: 0, defaultTolerancePercent: 30, syncEnabled: false, syncPin: "" };
 
-let state = { group: "20", data: { "20": null, "matsu": null }, editingCode: null, sortMode: "route", settings: null };
+let state = { group: "20", data: { "20": null, "matsu": null }, editingCode: null, sortMode: "route", settings: null,
+  photo: { targetCode: null, digits: [], imageDataUrl: null, rawOcrText: '' } };
 
 // ---- online sync (optional; app fully works offline without this) ----
 // 手順: Firebaseコンソール（無料）でプロジェクトを作成し、Firestoreを有効化したうえで、
@@ -1044,7 +1106,10 @@ function renderList(){
         </div>
         <div class="field-block">
           <div class="field-label">今回の検針値</div>
-          <input class="cur-input ${curVal !== '' ? 'filled' : ''}" type="number" inputmode="decimal" data-code="${m.code}" value="${curVal}">
+          <div class="cur-input-wrap">
+            <input class="cur-input ${curVal !== '' ? 'filled' : ''}" type="number" inputmode="decimal" data-code="${m.code}" value="${curVal}">
+            <button type="button" class="camera-btn" data-code="${m.code}" title="撮影して入力">📷</button>
+          </div>
         </div>
         <div class="field-block" style="flex:.7;">
           <div class="field-label" style="text-align:right;">使用量</div>
@@ -1085,6 +1150,152 @@ async function handleNoteChange(code, val){
   if(!r) return;
   r.note = val;
   await saveGroup(state.group, d);
+}
+
+// ---- photo capture: OCR + digit-dial confirmation ----
+// Flow: tap camera button on a meter row -> take/choose a photo (native camera app via
+// <input capture>) -> run best-effort OCR (Tesseract.js, loaded on demand like the
+// Firebase SDK) -> show one dial per digit, pre-filled with the OCR guess so the user can
+// correct any misread digit before it is written into the 検針値 field.
+
+let tesseractLoadPromise = null;
+function loadTesseract(){
+  if(window.Tesseract) return Promise.resolve();
+  if(tesseractLoadPromise) return tesseractLoadPromise;
+  tesseractLoadPromise = new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+    s.onload = () => resolve();
+    s.onerror = () => { tesseractLoadPromise = null; reject(new Error('tesseract sdk load failed')); };
+    document.head.appendChild(s);
+  });
+  return tesseractLoadPromise;
+}
+
+function defaultDigitCountForCode(code){
+  const d = state.data[state.group];
+  const m = d.meters.find(x => x.code === code);
+  const r = d.readings[code];
+  if(m && m.digits) return Math.max(1, Number(m.digits));
+  const ref = (r && r.cur !== null && r.cur !== undefined) ? r.cur : ((r && r.prev !== null && r.prev !== undefined) ? r.prev : null);
+  if(ref !== null && ref !== undefined && ref !== ''){
+    const s = String(Math.trunc(Math.abs(Number(ref))));
+    if(s && s !== 'NaN') return Math.max(s.length, 1);
+  }
+  return 5;
+}
+
+function openPhotoModal(code){
+  state.photo = { targetCode: code, digits: [], imageDataUrl: null, rawOcrText: '' };
+  document.getElementById('photoPreviewWrap').innerHTML = '<span class="photo-status">下のボタンでメーターを撮影してください</span>';
+  document.getElementById('photoDialSection').style.display = 'none';
+  document.getElementById('photoStatusText').style.display = 'none';
+  document.getElementById('photoConfirmBtn').disabled = true;
+  document.getElementById('photoOverlay').classList.remove('hidden');
+  const fileInput = document.getElementById('photoFileInput');
+  fileInput.value = '';
+  fileInput.click();
+}
+
+function closePhotoModal(){
+  document.getElementById('photoOverlay').classList.add('hidden');
+  state.photo = { targetCode: null, digits: [], imageDataUrl: null, rawOcrText: '' };
+}
+
+function handlePhotoFileSelected(file){
+  if(!file || !state.photo.targetCode) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    state.photo.imageDataUrl = e.target.result;
+    document.getElementById('photoPreviewWrap').innerHTML = '<img src="'+state.photo.imageDataUrl+'" alt="撮影したメーター">';
+    runOcrOnCurrentPhoto();
+  };
+  reader.onerror = () => showToast('画像の読み込みに失敗しました');
+  reader.readAsDataURL(file);
+}
+
+async function runOcrOnCurrentPhoto(){
+  const statusEl = document.getElementById('photoStatusText');
+  statusEl.style.display = '';
+  statusEl.textContent = '数値を自動認識しています…（初回はライブラリのダウンロードに時間がかかります）';
+  document.getElementById('photoDialSection').style.display = 'none';
+  document.getElementById('photoConfirmBtn').disabled = true;
+
+  const targetCode = state.photo.targetCode;
+  let recognizedDigits = '';
+  try{
+    await loadTesseract();
+    const worker = await Tesseract.createWorker('eng');
+    await worker.setParameters({ tessedit_char_whitelist: '0123456789' });
+    const { data } = await worker.recognize(state.photo.imageDataUrl);
+    await worker.terminate();
+    recognizedDigits = (data && data.text ? data.text : '').replace(/[^0-9]/g, '');
+  }catch(e){
+    console.error('OCR failed', e);
+    recognizedDigits = '';
+  }
+
+  // the modal may have been cancelled or retargeted while OCR was running
+  if(state.photo.targetCode !== targetCode) return;
+
+  const count = defaultDigitCountForCode(targetCode);
+  let digits;
+  if(recognizedDigits){
+    const trimmed = recognizedDigits.slice(-count).padStart(count, '0');
+    digits = trimmed.split('').map(Number);
+    statusEl.textContent = '自動認識結果を反映しました。誤りがあればダイヤルで修正してください。';
+  } else {
+    digits = new Array(count).fill(0);
+    statusEl.textContent = '自動認識できませんでした（ネット未接続、または数値を読み取れませんでした）。ダイヤルで数値を入力してください。';
+  }
+  state.photo.digits = digits;
+  state.photo.rawOcrText = recognizedDigits;
+  renderDigitDials();
+  document.getElementById('photoDialSection').style.display = '';
+  document.getElementById('photoConfirmBtn').disabled = false;
+}
+
+function renderDigitDials(){
+  document.getElementById('digitCountLabel').textContent = state.photo.digits.length + ' 桁';
+  const row = document.getElementById('digitDialRow');
+  row.innerHTML = state.photo.digits.map((val, idx) => `
+    <div class="digit-wheel" data-idx="${idx}">
+      <button type="button" class="digit-up" data-idx="${idx}">▲</button>
+      <div class="digit-value">${val}</div>
+      <button type="button" class="digit-down" data-idx="${idx}">▼</button>
+    </div>
+  `).join('');
+  const rawEl = document.getElementById('ocrRawText');
+  rawEl.textContent = state.photo.rawOcrText ? ('自動認識結果: ' + state.photo.rawOcrText) : '';
+}
+
+function changeDigit(idx, delta){
+  const v = state.photo.digits[idx];
+  state.photo.digits[idx] = (v + delta + 10) % 10;
+  renderDigitDials();
+}
+
+function changeDigitCount(delta){
+  const digits = state.photo.digits;
+  if(delta > 0){
+    if(digits.length >= 10) return;
+    digits.unshift(0); // meters are read left-to-right, so a new digit is added on the left (most significant)
+  } else {
+    if(digits.length <= 1) return;
+    digits.shift();
+  }
+  renderDigitDials();
+}
+
+async function confirmPhotoValue(){
+  const code = state.photo.targetCode;
+  if(!code) return;
+  const value = Number(state.photo.digits.join(''));
+  const input = document.querySelector('.cur-input[data-code="'+code+'"]');
+  if(input) input.value = value;
+  await handleInputChange(code, String(value));
+  closePhotoModal();
+  showToast('撮影した値を入力しました');
 }
 
 function applySearchFilter(){
@@ -1407,6 +1618,29 @@ async function bootApp(){
     } else if(e.target.classList.contains('note-input')){
       handleNoteChange(e.target.getAttribute('data-code'), e.target.value);
     }
+  });
+  document.getElementById('list').addEventListener('click', (e)=>{
+    const camBtn = e.target.closest('.camera-btn');
+    if(camBtn) openPhotoModal(camBtn.getAttribute('data-code'));
+  });
+
+  document.getElementById('photoFileInput').addEventListener('change', (e)=>{
+    const file = e.target.files && e.target.files[0];
+    handlePhotoFileSelected(file);
+  });
+  document.getElementById('photoRetakeBtn').addEventListener('click', ()=>{
+    document.getElementById('photoFileInput').value = '';
+    document.getElementById('photoFileInput').click();
+  });
+  document.getElementById('photoCancelBtn').addEventListener('click', closePhotoModal);
+  document.getElementById('photoConfirmBtn').addEventListener('click', confirmPhotoValue);
+  document.getElementById('digitCountMinus').addEventListener('click', ()=>changeDigitCount(-1));
+  document.getElementById('digitCountPlus').addEventListener('click', ()=>changeDigitCount(1));
+  document.getElementById('digitDialRow').addEventListener('click', (e)=>{
+    const upBtn = e.target.closest('.digit-up');
+    const downBtn = e.target.closest('.digit-down');
+    if(upBtn) changeDigit(Number(upBtn.getAttribute('data-idx')), 1);
+    if(downBtn) changeDigit(Number(downBtn.getAttribute('data-idx')), -1);
   });
 
   function refreshAfterSortChange(){
