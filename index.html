@@ -253,42 +253,22 @@
   .form-hint{font-size:20px;color:var(--ink-soft);margin:-6px 0 10px;line-height:1.5;}
   .form-row textarea{width:100%;padding:9px 10px;border-radius:8px;border:1px solid var(--line);font-size:20px;background:var(--bg);font-family:inherit;resize:vertical;}
   .form-row textarea:focus{outline:2px solid var(--accent);outline-offset:-1px;background:var(--card);}
-
-  /* photo capture / digit dial */
-  .cur-input-wrap{display:flex;gap:6px;align-items:center;}
-  .cur-input-wrap .cur-input{flex:1;min-width:0;}
-  .camera-btn{
-    flex:0 0 auto;width:38px;height:38px;border-radius:8px;border:1px solid var(--line);
-    background:var(--accent-soft);color:var(--accent);font-size:18px;line-height:1;
-    display:flex;align-items:center;justify-content:center;padding:0;
+  /* property filter (物件名で絞り込み) */
+  .prop-row{padding:0 14px 8px;}
+  .prop-chips{display:flex;flex-wrap:wrap;gap:6px;}
+  .prop-chip{
+    border:1px solid var(--line);background:var(--card);color:var(--ink);
+    border-radius:999px;padding:7px 12px;font-size:18px;font-weight:600;line-height:1.3;
   }
-  .camera-btn:active{background:var(--accent);color:#fff;}
-  #photoOverlay .sheet{max-height:90vh;overflow:auto;}
-  .photo-preview-wrap{
-    width:100%;min-height:120px;max-height:260px;border-radius:10px;overflow:hidden;
-    background:#111;margin-bottom:10px;display:flex;align-items:center;justify-content:center;
-  }
-  .photo-preview-wrap img{width:100%;display:block;}
-  .photo-status{font-size:20px;color:var(--ink-soft);text-align:center;margin:8px 0;line-height:1.5;}
-  .digit-count-row{display:flex;justify-content:center;align-items:center;gap:12px;margin:4px 0 10px;}
-  .digit-count-row button{padding:7px 14px;border-radius:8px;border:1px solid var(--line);background:var(--card);font-size:20px;color:var(--ink-soft);}
-  .digit-count-label{font-size:20px;color:var(--ink-soft);min-width:2.5em;text-align:center;}
-  .digit-count-name{font-size:20px;color:var(--ink-soft);min-width:3.5em;}
-  .digit-dial-row{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin:6px 0 14px;align-items:center;}
-  .digit-wheel{display:flex;flex-direction:column;align-items:center;gap:3px;}
-  .digit-wheel button{
-    width:42px;height:34px;border-radius:8px;border:1px solid var(--line);background:var(--card);
-    font-size:18px;color:var(--ink-soft);padding:0;
-  }
-  .digit-wheel button:active{background:var(--accent-soft);color:var(--accent);}
-  .digit-value{
-    width:42px;height:50px;display:flex;align-items:center;justify-content:center;
-    font-size:26px;font-weight:700;font-variant-numeric:tabular-nums;
-    border:1px solid var(--line);border-radius:8px;background:var(--bg);
-  }
-  .decimal-dot-wheel .digit-value{width:20px;border:none;background:transparent;align-items:flex-end;padding-bottom:8px;}
-  .decimal-dot-spacer{height:34px;}
-  .ocr-raw-text{font-size:20px;color:var(--ink-soft);text-align:center;margin-top:-6px;margin-bottom:10px;}
+  .prop-chip .cnt{font-weight:400;color:var(--ink-soft);margin-left:6px;font-variant-numeric:tabular-nums;}
+  .prop-chip.complete .cnt{color:var(--good);}
+  .prop-chip.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+  .prop-chip.active .cnt{color:#fff;opacity:.9;}
+  .pending-toggle{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:18px;color:var(--ink-soft);font-weight:600;}
+  .pending-toggle input{width:22px;height:22px;}
+  .row-prop{display:inline-block;font-size:16px;color:var(--accent);background:var(--accent-soft);border-radius:6px;padding:1px 8px;margin-left:6px;vertical-align:1px;}
+  .baseline-status{font-size:18px;color:var(--ink-soft);margin:0 0 8px;line-height:1.6;}
+  .baseline-status.pending{color:var(--warn);font-weight:600;}
 </style>
 </head>
 <body>
@@ -340,7 +320,7 @@
   </header>
 
   <div class="search-wrap" id="searchWrap">
-    <input type="text" id="searchBox" placeholder="メーター名・略称・コードで検索">
+    <input type="text" id="searchBox" placeholder="メーター名・略称・コード・物件名で検索">
   </div>
   <div class="sort-row" id="sortWrap">
     <span class="field-label" style="white-space:nowrap;align-self:center;">並び順</span>
@@ -348,6 +328,11 @@
       <button data-sort="route" id="sortRouteBtn">巡回順</button>
       <button data-sort="registered" id="sortRegBtn">登録順</button>
     </div>
+  </div>
+
+  <div class="prop-row" id="propWrap" style="display:none;">
+    <div class="prop-chips" id="propChips"></div>
+    <label class="pending-toggle"><input type="checkbox" id="pendingOnlyCheck">未入力のメーターだけ表示</label>
   </div>
 
   <div id="list"></div>
@@ -364,6 +349,14 @@
         <button class="btn" id="btnImportBackup">バックアップを読み込む</button>
       </div>
       <input type="file" id="importBackupInput" accept="application/json" style="display:none;">
+    </div>
+    <div style="margin-top:22px;padding-top:14px;border-top:1px solid var(--line);">
+      <div style="font-size:20px;font-weight:700;margin-bottom:6px;">基準値の更新</div>
+      <div style="font-size:20px;color:var(--ink-soft);margin-bottom:8px;line-height:1.6;">
+        エクセルでの確認が終わってから実行してください。今回の検針値が次回の「前回値」になり、入力欄は空になります。CSVを出力しただけでは基準値は変わりません。
+      </div>
+      <p class="baseline-status" id="baselineStatus"></p>
+      <button class="btn primary" id="btnRollover" style="width:100%;">基準値を更新する</button>
     </div>
     <div style="margin-top:22px;padding-top:14px;border-top:1px solid var(--line);">
       <div style="font-size:20px;color:var(--ink-soft);margin-bottom:8px;line-height:1.6;">
@@ -398,6 +391,7 @@
       <input type="date" id="exportDate">
     </div>
     <p>ファイル名は「検針日.csv」になります。文字コードは元のシステムに合わせたShift_JIS(cp932)です。</p>
+    <p>出力しても検針値はそのまま残るので、エクセルで誤りが見つかったら修正して何度でも出力し直せます。確認が終わったら「メーター管理」→「基準値を更新する」で確定してください。</p>
     <div class="form-actions">
       <button class="btn ghost" id="exportCancel">キャンセル</button>
       <button class="btn primary" id="exportConfirm">出力する</button>
@@ -408,46 +402,19 @@
 <!-- rollover modal -->
 <div class="overlay hidden" id="rolloverOverlay">
   <div class="sheet">
-    <h2>次回の基準にしますか?</h2>
-    <p>「はい」を選ぶと、今回入力した検針値が次回の「前回値」になり、入力欄はリセットされます。「いいえ」を選ぶと今回の入力はそのまま残ります。</p>
-    <div class="form-actions">
-      <button class="btn ghost" id="rolloverNo">いいえ</button>
-      <button class="btn primary" id="rolloverYes">はい、次回の基準にする</button>
-    </div>
-  </div>
-</div>
-
-<!-- photo capture / digit dial modal -->
-<input type="file" accept="image/*" capture="environment" id="photoFileInput" style="display:none">
-<div class="overlay hidden" id="photoOverlay">
-  <div class="sheet">
-    <h2>📷 撮影して入力</h2>
-    <div class="photo-preview-wrap" id="photoPreviewWrap">
-      <span class="photo-status">下のボタンでメーターを撮影してください</span>
+    <h2>基準値を更新しますか?</h2>
+    <div id="rolloverInfo"></div>
+    <p>更新すると、今回入力した検針値が次回の「前回値」になり、入力欄と備考は空になります。この操作は元に戻せないため、心配な場合は先にバックアップを書き出してください。</p>
+    <button class="btn" id="rolloverBackup" style="width:100%;margin-bottom:12px;">先にバックアップを書き出す</button>
+    <div class="form-row">
+      <label style="display:flex;align-items:flex-start;gap:8px;font-weight:600;color:var(--ink);">
+        <input type="checkbox" id="rolloverAckCheck" style="width:24px;height:24px;flex-shrink:0;margin-top:2px;">
+        <span>エクセルでの確認が終わり、検針値に誤りがないことを確認しました</span>
+      </label>
     </div>
     <div class="form-actions">
-      <button class="btn" id="photoRetakeBtn">撮影しなおす</button>
-    </div>
-    <p class="photo-status" id="photoStatusText" style="display:none;"></p>
-    <div id="photoDialSection" style="display:none;">
-      <div class="digit-count-row">
-        <span class="digit-count-name">整数部</span>
-        <button type="button" id="digitCountMinus">－</button>
-        <span class="digit-count-label" id="digitCountLabel"></span>
-        <button type="button" id="digitCountPlus">＋</button>
-      </div>
-      <div class="digit-count-row">
-        <span class="digit-count-name">小数部</span>
-        <button type="button" id="decimalCountMinus">－</button>
-        <span class="digit-count-label" id="decimalCountLabel"></span>
-        <button type="button" id="decimalCountPlus">＋</button>
-      </div>
-      <div class="digit-dial-row" id="digitDialRow"></div>
-      <p class="ocr-raw-text" id="ocrRawText"></p>
-    </div>
-    <div class="form-actions">
-      <button class="btn ghost" id="photoCancelBtn">キャンセル</button>
-      <button class="btn primary" id="photoConfirmBtn" disabled>この値を入力する</button>
+      <button class="btn ghost" id="rolloverNo">キャンセル</button>
+      <button class="btn primary" id="rolloverYes" disabled>基準値を更新する</button>
     </div>
   </div>
 </div>
@@ -459,6 +426,7 @@
     <div class="form-row"><label>メーターコード</label><input type="text" id="addCode" placeholder="例: W1301-187"></div>
     <div class="form-row"><label>メーター名称</label><input type="text" id="addName" placeholder="例: 13F ソシエ 水道"></div>
     <div class="form-row"><label>メーター略称</label><input type="text" id="addAbbr" placeholder="例: ソシエ"></div>
+    <div class="form-row"><label>物件名</label><input type="text" id="addProperty" list="propertyList" placeholder="例: スカイビル共用"></div>
     <div class="form-row">
       <label>種別</label>
       <select id="addType">
@@ -528,6 +496,7 @@
   </div>
 </div>
 
+<datalist id="propertyList"></datalist>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -542,13 +511,21 @@ const METER_DEFAULTS = {"20":{"W232-204":[1,4,10,"20241010 ビオプラス 1Fか
 // Fallback tolerance % used when a meter has no master value and no manual override, by 種別 (type)
 // 1=電灯 2=動力 3=ガス 4=水道
 const DEFAULT_TOLERANCE_BY_TYPE = { "1": 20, "2": 20, "3": 20, "4": 10 };
+// 物件名 per meter code, sourced from the 巡回の順番_デフォルト値_物件名 master sheet
+const METER_PROPERTY = {"20":{"W232-204":"大宮スカイビル","L130-763":"大宮スカイビル","W130-510":"大宮スカイビル","W101-871":"大宮スカイビル","WB148-471":"大宮スカイビル","WB158-322":"大宮スカイビル","WB166-001":"大宮スカイビル","PB166-412":"大宮スカイビル","LB166-026":"大宮スカイビル","LB169-878":"大宮スカイビル","PB169-514":"大宮スカイビル","WB169-213":"大宮スカイビル","LB101-887":"大宮スカイビル","LB101-883":"大宮スカイビル","LB102-878":"大宮スカイビル","LB102-875":"大宮スカイビル","LB103-879":"大宮スカイビル","LB103-880":"大宮スカイビル","LB104-870":"大宮スカイビル","LB104-902":"大宮スカイビル","LB105-904":"大宮スカイビル","LB105-899":"大宮スカイビル","LB106-871":"大宮スカイビル","LB106-886":"大宮スカイビル","LB107-874":"大宮スカイビル","LB107-881":"大宮スカイビル","LB108-892":"大宮スカイビル","LB108-906":"大宮スカイビル","LB109-884":"大宮スカイビル","LB109-907":"大宮スカイビル","LB110-917":"大宮スカイビル","LB110-908":"大宮スカイビル","LB155-900":"大宮スカイビル","LB155-931":"大宮スカイビル","LB156-921":"大宮スカイビル","LB156-950":"大宮スカイビル","LB111-932":"大宮スカイビル","LB111-946":"大宮スカイビル","LB112-869":"大宮スカイビル","LB112-971":"大宮スカイビル","LB113-935":"大宮スカイビル","LB113-966":"大宮スカイビル","LB114-939":"大宮スカイビル","LB114-963":"大宮スカイビル","LB115-961":"大宮スカイビル","LB115-969":"大宮スカイビル","LB115-959":"大宮スカイビル","LB115-967":"大宮スカイビル","LB115-958":"大宮スカイビル","LB115-895":"大宮スカイビル","PB101-693":"大宮スカイビル","PB102-127":"大宮スカイビル","PB103-126":"大宮スカイビル","PB104-124":"大宮スカイビル","PB105-139":"大宮スカイビル","PB108-707":"大宮スカイビル","PB109-143":"大宮スカイビル","PB110-622":"大宮スカイビル","PB111-223":"大宮スカイビル","PB112-913":"大宮スカイビル","PB112-925":"大宮スカイビル","PB113-910":"大宮スカイビル","PB154-931":"大宮スカイビル","PB154-452":"大宮スカイビル","WB163-796":"大宮スカイビル","WB163-705":"大宮スカイビル","WB163-687":"大宮スカイビル","WB103-319":"大宮スカイビル","WB169-124":"大宮スカイビル","WB168-245":"大宮スカイビル","WB157-413":"大宮スカイビル","WB168-693":"大宮スカイビル","WB168-666":"大宮スカイビル","WB168-664":"大宮スカイビル","WB168-791":"大宮スカイビル","WB168-419":"大宮スカイビル","WB165-438":"大宮スカイビル","WB124-329":"大宮スカイビル","GB124-644":"大宮スカイビル","WB126-332":"大宮スカイビル","GB166-006":"大宮スカイビル","WB128-318":"大宮スカイビル","GB128-639":"大宮スカイビル","WB131-333":"大宮スカイビル","GB167-010":"大宮スカイビル","WB132-334":"大宮スカイビル","GB132-665":"大宮スカイビル","WB116-463":"大宮スカイビル","WB117-464":"大宮スカイビル","GB117-707":"大宮スカイビル","WB167-490":"大宮スカイビル","WB111-465":"大宮スカイビル","LB153-369":"大宮スカイビル","WB112-320":"大宮スカイビル","WB113-597":"大宮スカイビル","LB154-018":"大宮スカイビル","LB154-770":"大宮スカイビル","WB122-324":"大宮スカイビル","LB120-781":"大宮スカイビル","WB120-459":"大宮スカイビル","WB119-313":"大宮スカイビル","LB169-062":"大宮スカイビル","PB169-839":"大宮スカイビル","WB169-812":"大宮スカイビル","GB169-203":"大宮スカイビル","WB165-914":"大宮スカイビル","GB165-704":"大宮スカイビル","LB165-990":"大宮スカイビル","WB133-601":"大宮スカイビル","GB133-259":"大宮スカイビル","WB129-603":"大宮スカイビル","GB129-803":"大宮スカイビル","WB134-470":"大宮スカイビル","WB127-315":"大宮スカイビル","GB127-907":"大宮スカイビル","WB125-466":"大宮スカイビル","GB125-222":"大宮スカイビル","WB150-602":"大宮スカイビル","W805-595":"大宮スカイビル","L703-030":"大宮スカイビル","P703-376":"大宮スカイビル","W506-093":"大宮スカイビル","W501-581":"大宮スカイビル","G501-656":"大宮スカイビル","L501-764":"大宮スカイビル","P501-315":"大宮スカイビル","W401-973":"大宮スカイビル","W301-469":"大宮スカイビル","L301-924":"大宮スカイビル","P301-064":"大宮スカイビル","W906-616":"大宮スカイビル","G906-809":"大宮スカイビル","W905-674":"大宮スカイビル","G905-514":"大宮スカイビル","W904-617":"大宮スカイビル","G904-950":"大宮スカイビル","W907-716":"大宮スカイビル","G907-513":"大宮スカイビル","W910-593":"大宮スカイビル","G910-962":"大宮スカイビル","W903-592":"大宮スカイビル","G903-610":"大宮スカイビル","W902-591":"大宮スカイビル","G902-944":"大宮スカイビル","W901-615":"大宮スカイビル","G901-221":"大宮スカイビル","W909-614":"大宮スカイビル","G909-218":"大宮スカイビル","W931-625":"大宮スカイビル","G931-029":"大宮スカイビル","W932-585":"大宮スカイビル","W908-590":"大宮スカイビル","G908-955":"大宮スカイビル","W923-864":"大宮スカイビル","G923-921":"大宮スカイビル","W924-599":"大宮スカイビル","G924-603":"大宮スカイビル","W925-467":"大宮スカイビル","G925-947":"大宮スカイビル","W926-618":"大宮スカイビル","G926-223":"大宮スカイビル","W927-598":"大宮スカイビル","G927-952":"大宮スカイビル","W921-838":"大宮スカイビル","G921-104":"大宮スカイビル","PPH03-066":"大宮スカイビル","PPH93-658":"大宮スカイビル","PPH03-893":"大宮スカイビル","W1303-461":"大宮スカイビル","W1301-187":"大宮スカイビル","L1301-546":"大宮スカイビル","L1302-544":"大宮スカイビル","L1304-267":"大宮スカイビル","L1303-545":"大宮スカイビル","P1301-623":"大宮スカイビル","P1303-708":"大宮スカイビル","P1001-439":"大宮スカイビル","L1102-241":"大宮スカイビル","L1101-240":"大宮スカイビル","L1105-269":"大宮スカイビル","P1105-128":"大宮スカイビル","W1105-619":"大宮スカイビル","G1105-607":"大宮スカイビル","P1101-603":"大宮スカイビル","P1102-625":"大宮スカイビル","P1104-632":"大宮スカイビル","L1007-580":"大宮スカイビル","W1001-039":"大宮スカイビル","W1003-600":"大宮スカイビル","L1003-271":"大宮スカイビル","L1001-253":"大宮スカイビル","P1004-760":"大宮スカイビル","P1003-133":"大宮スカイビル","L1004-125":"大宮スカイビル","L1005-124":"大宮スカイビル","W1004-472":"大宮スカイビル","P904-114":"大宮スカイビル","P904-105":"大宮スカイビル","P907-638":"大宮スカイビル","P910-651":"大宮スカイビル","P902-135":"大宮スカイビル","L932-427":"大宮スカイビル","L924-243":"大宮スカイビル","L925-239":"大宮スカイビル","L926-268":"大宮スカイビル","L927-270":"大宮スカイビル","L931-394":"大宮スカイビル","L923-777":"大宮スカイビル","P923-526":"大宮スカイビル","P932-881":"大宮スカイビル","P923-718":"大宮スカイビル","P924-701":"大宮スカイビル","P925-130":"大宮スカイビル","P926-144":"大宮スカイビル","P927-120":"大宮スカイビル","P955-123":"大宮スカイビル","P956-628":"大宮スカイビル","P958-642":"大宮スカイビル","P909-653":"大宮スカイビル","L921-258":"大宮スカイビル","P921-387":"大宮スカイビル","P931-163":"大宮スカイビル","P921-134":"大宮スカイビル","P921-119":"大宮スカイビル","P927-131":"大宮スカイビル","P926-115":"大宮スカイビル","P925-652":"大宮スカイビル","P924-624":"大宮スカイビル","P923-749":"大宮スカイビル","P923-699":"大宮スカイビル","L901-237":"大宮スカイビル","L902-245":"大宮スカイビル","L903-248":"大宮スカイビル","L904-247":"大宮スカイビル","L905-246":"大宮スカイビル","L907-264":"大宮スカイビル","L906-266":"大宮スカイビル","L908-257":"大宮スカイビル","L909-244":"大宮スカイビル","L910-265":"大宮スカイビル","P901-191":"大宮スカイビル","P901-142":"大宮スカイビル","P902-702":"大宮スカイビル","P903-121":"大宮スカイビル","P904-106":"大宮スカイビル","P907-645":"大宮スカイビル","P910-116":"大宮スカイビル","P910-692":"大宮スカイビル","P955-331":"大宮スカイビル","L801-238":"大宮スカイビル","L805-249":"大宮スカイビル","L806-251":"大宮スカイビル","L802-263":"大宮スカイビル","L807-261":"大宮スカイビル","P806-654":"大宮スカイビル","P807-630":"大宮スカイビル","L823-254":"大宮スカイビル","L824-259":"大宮スカイビル","L825-260":"大宮スカイビル","L826-262":"大宮スカイビル","L702-250":"大宮スカイビル","L707-252":"大宮スカイビル","L704-255":"大宮スカイビル","L605-315":"大宮スカイビル","P605-268":"大宮スカイビル","L605-312":"大宮スカイビル","L505-313":"大宮スカイビル","L506-314":"大宮スカイビル","P401-944":"大宮スカイビル","L401-256":"大宮スカイビル","L217-311":"大宮スカイビル","W230-383":"大宮スカイビル","L230-545":"大宮スカイビル","P230-579":"大宮スカイビル","L231-544":"大宮スカイビル","L220-188":"大宮スカイビル","L203-123":"大宮スカイビル","L115-317":"大宮スカイビル","P115-012":"大宮スカイビル","L126-310":"大宮スカイビル","L101-925":"大宮スカイビル","L110-926":"大宮スカイビル","P110-305":"大宮スカイビル","PB123-117":"大宮スカイビル","PB124-107":"大宮スカイビル","PB125-125":"大宮スカイビル","PB126-118":"大宮スカイビル","PB128-692":"大宮スカイビル","PB129-141":"大宮スカイビル","PB130-743":"大宮スカイビル","PB131-113":"大宮スカイビル","PB132-656":"大宮スカイビル","PB133-122":"大宮スカイビル","PB134-129":"大宮スカイビル","LB123-580":"大宮スカイビル","LB123-830":"大宮スカイビル","LB124-578":"大宮スカイビル","LB124-593":"大宮スカイビル","LB125-391":"大宮スカイビル","LB125-385":"大宮スカイビル","LB126-826":"大宮スカイビル","LB126-827":"大宮スカイビル","LB127-388":"大宮スカイビル","LB127-828":"大宮スカイビル","LB128-386":"大宮スカイビル","LB128-390":"大宮スカイビル","LB129-715":"大宮スカイビル","LB129-720":"大宮スカイビル","LB130-721":"大宮スカイビル","LB130-384":"大宮スカイビル","LB131-387":"大宮スカイビル","LB131-382":"大宮スカイビル","LB132-718":"大宮スカイビル","LB132-835":"大宮スカイビル","LB133-832":"大宮スカイビル","LB133-716":"大宮スカイビル","LB134-713":"大宮スカイビル","LB134-833":"大宮スカイビル","LB116-591":"大宮スカイビル","LB116-594":"大宮スカイビル","LB117-595":"大宮スカイビル","LB117-582":"大宮スカイビル","LB161-829":"大宮スカイビル","LB161-581":"大宮スカイビル","LB118-831":"大宮スカイビル","LB118-592":"大宮スカイビル","LB119-834":"大宮スカイビル","LB119-585":"大宮スカイビル","LB121-589":"大宮スカイビル","LB121-590":"大宮スカイビル","LB122-588":"大宮スカイビル","LB122-596":"大宮スカイビル","PB116-696":"大宮スカイビル","PB117-626":"大宮スカイビル","PB161-112":"大宮スカイビル","PB118-111":"大宮スカイビル","PB119-698":"大宮スカイビル","PB120-620":"大宮スカイビル","PB139-591":"大宮スカイビル","PB125-558":"大宮スカイビル","LB162-747":"大宮スカイビル","LB135-951":"大宮スカイビル","LB135-889":"大宮スカイビル","LB136-903":"大宮スカイビル","LB136-953":"大宮スカイビル","LB137-914":"大宮スカイビル","LB137-913":"大宮スカイビル","LB138-923":"大宮スカイビル","LB138-898":"大宮スカイビル","LB139-955":"大宮スカイビル","LB139-919":"大宮スカイビル","LB140-954":"大宮スカイビル","LB140-894":"大宮スカイビル","LB141-905":"大宮スカイビル","LB141-891":"大宮スカイビル","LB142-922":"大宮スカイビル","LB142-928":"大宮スカイビル","LB157-942":"大宮スカイビル","LB157-945":"大宮スカイビル","LB143-920":"大宮スカイビル","LB143-949":"大宮スカイビル","LB144-964":"大宮スカイビル","LB144-947":"大宮スカイビル","LB145-938":"大宮スカイビル","LB145-926":"大宮スカイビル","LB146-925":"大宮スカイビル","LB146-930":"大宮スカイビル","LB158-918":"大宮スカイビル","LB158-965":"大宮スカイビル","LB147-944":"大宮スカイビル","LB147-890":"大宮スカイビル","LB148-912":"大宮スカイビル","LB159-962":"大宮スカイビル","LB159-888":"大宮スカイビル","LB150-943":"大宮スカイビル","LB150-873":"大宮スカイビル","LB163-957":"大宮スカイビル","LB148-896":"大宮スカイビル","PB135-894":"大宮スカイビル","PB136-218":"大宮スカイビル","PB137-872":"大宮スカイビル","PB138-929":"大宮スカイビル","PB139-907":"大宮スカイビル","PB140-236":"大宮スカイビル","PB141-889":"大宮スカイビル","PB142-215":"大宮スカイビル","PB157-905":"大宮スカイビル","PB143-917":"大宮スカイビル","PB145-921":"大宮スカイビル","PB158-898":"大宮スカイビル","PB147-228":"大宮スカイビル","PB148-912":"大宮スカイビル","PB159-911":"大宮スカイビル","PB148-927":"大宮スカイビル","PB149-451":"大宮スカイビル","PB150-386":"大宮スカイビル","PB150-388":"大宮スカイビル","PB152-385":"大宮スカイビル","PB152-384":"大宮スカイビル"},"matsu":{"L101-408":"スカイビル西口商店会","P101-632":"スカイビル西口商店会","W101-767":"スカイビル西口商店会","L102-192":"スカイビル西口商店会","P102-615":"スカイビル西口商店会","G102-242":"スカイビル西口商店会","W102-856":"スカイビル西口商店会","L103-411":"スカイビル西口商店会","P103-744":"スカイビル西口商店会","G103-723":"スカイビル西口商店会","W103-940":"スカイビル西口商店会","L104-672":"スカイビル西口商店会","P104-810":"スカイビル西口商店会","W104-673":"スカイビル西口商店会","L107-100":"スカイビル西口商店会","L108-409":"スカイビル西口商店会","W108-744":"スカイビル西口商店会","L201-424":"スカイビル西口商店会","W201-352":"スカイビル西口商店会","L210-142":"スカイビル西口商店会","P210-664":"スカイビル西口商店会","W210-341":"スカイビル西口商店会","L205-453":"スカイビル西口商店会","W205-106":"スカイビル西口商店会","L206-451":"スカイビル西口商店会","L204-459":"スカイビル西口商店会","L212-446":"スカイビル西口商店会","L202-047":"スカイビル西口商店会","W202-291":"スカイビル西口商店会","L208-466":"スカイビル西口商店会","L209-452":"スカイビル西口商店会","L211-020":"スカイビル西口商店会","L207-440":"スカイビル西口商店会","L301-450":"スカイビル西口商店会","L302-461":"スカイビル西口商店会","P302-171":"スカイビル西口商店会","W302-186":"スカイビル西口商店会","L303-552":"スカイビル西口商店会","P303-446":"スカイビル西口商店会","W303-189":"スカイビル西口商店会","L304-105":"スカイビル西口商店会","L304-1-101":"スカイビル西口商店会","L306-300":"スカイビル西口商店会","L901-426":"スカイビル商店会","G901-279":"スカイビル商店会","W901-751":"スカイビル商店会","L201-317":"スカイビル商店会","L205-500":"スカイビル商店会","L215-982":"スカイビル商店会","L113-983":"スカイビル商店会","L114-987":"スカイビル商店会","L111-980":"スカイビル商店会","L112-978":"スカイビル商店会","L116-989":"スカイビル商店会","PPH01-757":"スカイビル共用","PPH03-658":"スカイビル共用","WR02-120":"スカイビル共用","WR01-350":"スカイビル共用","P1301-750":"スカイビル共用","P1101-753":"スカイビル共用","P1102-239":"スカイビル共用","P1103-229":"スカイビル共用","W1101-705":"スカイビル共用","W1102-706":"スカイビル共用","W1103-860":"スカイビル共用","W1104-757":"スカイビル共用","P1001-759":"スカイビル共用","P1104-752":"スカイビル共用","W1105-410":"スカイビル共用","W1201-548":"スカイビル共用","W1202-644":"スカイビル共用","P801-754":"スカイビル共用","P802-761":"スカイビル共用","P803-755":"スカイビル共用","P804-756":"スカイビル共用","P405-077":"スカイビル共用","P406-490":"スカイビル共用","P301-292":"スカイビル共用","P201-293":"スカイビル共用","P101-294":"スカイビル共用","P102-289":"スカイビル共用","W103-612":"スカイビル共用","P103-239":"スカイビル共用","W101-001":"スカイビル共用","PB101-141":"スカイビル共用","PB201-143":"スカイビル共用","PB202-142":"スカイビル共用","PB204-140":"スカイビル共用","PB205-938":"スカイビル共用","WB311-333":"スカイビル共用","PB330-440":"スカイビル共用","PB331-931":"スカイビル共用","PB332-435":"スカイビル共用","WB306-034":"スカイビル共用","WB307-035":"スカイビル共用","WB308-607":"スカイビル共用","WB305-657":"スカイビル共用","PB327-442":"スカイビル共用","PB329-438":"スカイビル共用","PB325-441":"スカイビル共用","WB304-349":"スカイビル共用","PB322-439":"スカイビル共用","PB323-429":"スカイビル共用","PB324-433":"スカイビル共用","PB203-144":"スカイビル共用","WB303-127":"スカイビル共用","PB301-031":"スカイビル共用","PB302-027":"スカイビル共用","PB303-029":"スカイビル共用","PB304-023":"スカイビル共用","PB305-028":"スカイビル共用","PB306-030":"スカイビル共用","PB307-032":"スカイビル共用","PB308-025":"スカイビル共用","PB309-024":"スカイビル共用","PB310-173":"スカイビル共用","PB311-177":"スカイビル共用","PB312-174":"スカイビル共用","PB313-175":"スカイビル共用","PB315-172":"スカイビル共用","PB316-165":"スカイビル共用","PB317-170":"スカイビル共用","PB318-166":"スカイビル共用","PB319-171":"スカイビル共用","PB320-167":"スカイビル共用","PB321-168":"スカイビル共用","LB301-065":"スカイビル共用","LB302-259":"スカイビル共用","LB304-260":"スカイビル共用","LB305-257":"スカイビル共用","LB306-223":"スカイビル共用","LB307-258":"スカイビル共用","LB308-169":"スカイビル共用","WB301-108":"スカイビル共用","PB335-436":"スカイビル共用","PB336-437":"スカイビル共用","WB302-162":"スカイビル共用","PB334-434":"スカイビル共用","WB309-157":"スカイビル共用","WB101-":"スカイビル共用","WB103-161":"スカイビル共用","WB102-161":"スカイビル共用","W102-414":"スカイビル共用"}};
 const GROUP_LABEL = { "20": "20日 共用部検針", "matsu": "月末 共用部検針" };
 const TYPE_LABEL = { "1":"電灯", "2":"動力", "3":"ガス", "4":"水道" };
 const SETTINGS_KEY = "kenshin_settings";
 const DEFAULT_SETTINGS = { readers: ["検針者1", "検針者2"], currentReaderIndex: 0, defaultTolerancePercent: 30, syncEnabled: false, syncPin: "" };
 
 let state = { group: "20", data: { "20": null, "matsu": null }, editingCode: null, sortMode: "route", settings: null,
-  photo: { targetCode: null, intDigits: [], decDigits: [], imageDataUrl: null, rawOcrText: '' } };
+  propFilter: { "20": "", "matsu": "" }, pendingOnly: { "20": false, "matsu": false }, keepVisible: {} };
+
+function getMeterProperty(g, m){
+  if(m && m.property !== undefined && m.property !== null) return String(m.property);
+  return (METER_PROPERTY[g] && m && METER_PROPERTY[g][m.code]) || '';
+}
+function isEntered(r){ return !!r && r.cur !== null && r.cur !== undefined && r.cur !== ''; }
 
 // ---- online sync (optional; app fully works offline without this) ----
 // 手順: Firebaseコンソール（無料）でプロジェクトを作成し、Firestoreを有効化したうえで、
@@ -658,7 +635,8 @@ async function loadGroup(g){
         tolerancePercent: (md && md[2] !== null && md[2] !== undefined) ? Number(md[2]) : null,
         digits: (md && md[1] !== null && md[1] !== undefined) ? Number(md[1]) : null,
         multiplier: (md && md[0] !== null && md[0] !== undefined) ? Number(md[0]) : parseMultiplierFromName(m.name),
-        remarks: (md && md[3]) ? md[3] : ''
+        remarks: (md && md[3]) ? md[3] : '',
+        property: (METER_PROPERTY[g] && METER_PROPERTY[g][m.code]) || ''
       };
     });
     const readings = {};
@@ -675,6 +653,7 @@ async function loadGroup(g){
       if(m.digits === undefined){ m.digits = (md && md[1] !== null && md[1] !== undefined) ? Number(md[1]) : null; changed = true; }
       if(m.multiplier === undefined){ m.multiplier = (md && md[0] !== null && md[0] !== undefined) ? Number(md[0]) : parseMultiplierFromName(m.name); changed = true; }
       if(m.remarks === undefined){ m.remarks = (md && md[3]) ? md[3] : ''; changed = true; }
+      if(m.property === undefined){ m.property = (METER_PROPERTY[g] && METER_PROPERTY[g][m.code]) || ''; changed = true; }
     });
     Object.keys(loaded.readings).forEach(code => {
       const r = loaded.readings[code];
@@ -957,6 +936,7 @@ function importBackupFile(file){
       renderLastExport();
       renderProgress();
       renderList();
+      if(document.getElementById('manageScreen').style.display !== 'none') renderManage();
       showToast('バックアップを読み込みました');
     }catch(err){
       showToast('ファイルの読み込みに失敗しました');
@@ -1087,6 +1067,7 @@ function renderList(){
     return;
   }
   const meters = getSortedMeters(d);
+  const multiProp = new Set(meters.map(m => getMeterProperty(state.group, m))).size > 1;
   const rows = meters.map(m => {
     const r = d.readings[m.code] || { prev: null, cur: null, note: '', prevUsage: null };
     const { usage, wrapped } = computeUsage(m, r.prev, r.cur);
@@ -1101,11 +1082,11 @@ function renderList(){
     if(isError) note = '<div class="row-error-note">⚠ 前回値より小さい値です。入力ミスの可能性があります（桁数を設定すると繰り上がりとして自動計算されます）</div>';
     else if(isWarn) note = '<div class="row-error-note warn-note">⚠ 前回の使用量から'+Math.round(dev.deviationPercent)+'%乖離しています（許容 '+getTolerancePercent(m)+'%）</div>';
     return `
-    <div class="row${isError ? ' row-error' : (isWarn ? ' row-warn' : '')}" data-search="${(m.name+m.abbr+m.code).toLowerCase()}" data-code="${m.code}">
+    <div class="row${isError ? ' row-error' : (isWarn ? ' row-warn' : '')}" data-search="${escapeHtml((m.name+m.abbr+m.code+getMeterProperty(state.group, m)).toLowerCase())}" data-code="${m.code}" data-property="${escapeHtml(getMeterProperty(state.group, m))}" data-entered="${isEntered(r) ? '1' : '0'}">
       <div class="row-head">
         <div>
           <div class="row-name">${orderBadge}${escapeHtml(m.name)}</div>
-          <div class="row-meta">${escapeHtml(m.code)}</div>
+          <div class="row-meta">${escapeHtml(m.code)}${multiProp ? '<span class="row-prop">'+escapeHtml(getMeterProperty(state.group, m) || '物件名未設定')+'</span>' : ''}</div>
         </div>
         <span class="type-badge type-${m.type}">${TYPE_LABEL[m.type] || '種別' + m.type}</span>
       </div>
@@ -1116,10 +1097,7 @@ function renderList(){
         </div>
         <div class="field-block">
           <div class="field-label">今回の検針値</div>
-          <div class="cur-input-wrap">
-            <input class="cur-input ${curVal !== '' ? 'filled' : ''}" type="number" inputmode="decimal" data-code="${m.code}" value="${curVal}">
-            <button type="button" class="camera-btn" data-code="${m.code}" title="撮影して入力">📷</button>
-          </div>
+          <input class="cur-input ${curVal !== '' ? 'filled' : ''}" type="number" inputmode="decimal" data-code="${m.code}" value="${curVal}">
         </div>
         <div class="field-block" style="flex:.7;">
           <div class="field-label" style="text-align:right;">使用量</div>
@@ -1134,7 +1112,53 @@ function renderList(){
       </div>
     </div>`;
   }).join('');
-  listEl.innerHTML = rows;
+  listEl.innerHTML = rows + '<div class="empty" id="filterEmpty" style="display:none;"></div>';
+  renderPropFilter();
+  applySearchFilter();
+}
+
+// ---- property filter (物件名で絞り込み) ----
+function getGroupProperties(g){
+  const d = state.data[g];
+  const list = [];
+  const seen = {};
+  getSortedMeters(d).forEach(m => {
+    const p = getMeterProperty(g, m);
+    if(!seen[p]){ seen[p] = { name: p, total: 0, left: 0 }; list.push(seen[p]); }
+    seen[p].total++;
+    if(!isEntered(d.readings[m.code])) seen[p].left++;
+  });
+  return list;
+}
+
+function renderPropFilter(){
+  const g = state.group;
+  const wrap = document.getElementById('propWrap');
+  const props = getGroupProperties(g);
+  const manageOpen = document.getElementById('manageScreen').style.display !== 'none';
+  if(props.length < 2){ state.propFilter[g] = ''; }
+  if(props.length < 2 || manageOpen){
+    wrap.style.display = 'none';
+    return;
+  }
+  wrap.style.display = '';
+  if(state.propFilter[g] && !props.some(p => p.name === state.propFilter[g])) state.propFilter[g] = '';
+  const cur = state.propFilter[g];
+  const allLeft = props.reduce((s, p) => s + p.left, 0);
+  const chip = (value, label, left) =>
+    '<button class="prop-chip' + (cur === value ? ' active' : '') + (left === 0 ? ' complete' : '') + '" data-prop="' + escapeHtml(value) + '">' +
+    escapeHtml(label) + '<span class="cnt">' + (left === 0 ? '✓済' : '残' + left) + '</span></button>';
+  document.getElementById('propChips').innerHTML =
+    chip('', 'すべて', allLeft) + props.map(p => chip(p.name, p.name || '物件名未設定', p.left)).join('');
+  document.getElementById('pendingOnlyCheck').checked = !!state.pendingOnly[g];
+}
+
+function setPropFilter(value){
+  state.propFilter[state.group] = value;
+  state.keepVisible = {};
+  renderPropFilter();
+  applySearchFilter();
+  window.scrollTo(0, 0);
 }
 
 function escapeHtml(s){
@@ -1146,6 +1170,9 @@ async function handleInputChange(code, rawVal){
   const r = d.readings[code];
   if(rawVal === ''){ r.cur = null; }
   else { r.cur = Number(rawVal); }
+  d.changedSinceExport = true;
+  // 「未入力だけ表示」中に入力した行は、入力直後に消えないよう表示を保つ
+  state.keepVisible[code] = true;
   await saveGroup(state.group, d);
   renderProgress();
   const q = document.getElementById('searchBox').value;
@@ -1159,202 +1186,62 @@ async function handleNoteChange(code, val){
   const r = d.readings[code];
   if(!r) return;
   r.note = val;
+  d.changedSinceExport = true;
   await saveGroup(state.group, d);
-}
-
-// ---- photo capture: OCR + digit-dial confirmation ----
-// Flow: tap camera button on a meter row -> take/choose a photo (native camera app via
-// <input capture>) -> run best-effort OCR (Tesseract.js, loaded on demand like the
-// Firebase SDK) -> show one dial per digit, pre-filled with the OCR guess so the user can
-// correct any misread digit before it is written into the 検針値 field.
-
-let tesseractLoadPromise = null;
-function loadTesseract(){
-  if(window.Tesseract) return Promise.resolve();
-  if(tesseractLoadPromise) return tesseractLoadPromise;
-  tesseractLoadPromise = new Promise((resolve, reject) => {
-    const s = document.createElement('script');
-    s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
-    s.onload = () => resolve();
-    s.onerror = () => { tesseractLoadPromise = null; reject(new Error('tesseract sdk load failed')); };
-    document.head.appendChild(s);
-  });
-  return tesseractLoadPromise;
-}
-
-function defaultDigitConfigForCode(code){
-  const d = state.data[state.group];
-  const m = d.meters.find(x => x.code === code);
-  const r = d.readings[code];
-  const ref = (r && r.cur !== null && r.cur !== undefined) ? r.cur : ((r && r.prev !== null && r.prev !== undefined) ? r.prev : null);
-  let intCount = (m && m.digits) ? Math.max(1, Number(m.digits)) : null;
-  let decCount = 0;
-  if(ref !== null && ref !== undefined && ref !== ''){
-    const s = String(Math.abs(Number(ref)));
-    if(s && s !== 'NaN'){
-      const parts = s.split('.');
-      if(!intCount) intCount = Math.max(parts[0].length, 1);
-      if(parts[1]) decCount = parts[1].length;
-    }
-  }
-  if(!intCount) intCount = 5;
-  return { intCount, decCount };
-}
-
-function openPhotoModal(code){
-  state.photo = { targetCode: code, intDigits: [], decDigits: [], imageDataUrl: null, rawOcrText: '' };
-  document.getElementById('photoPreviewWrap').innerHTML = '<span class="photo-status">下のボタンでメーターを撮影してください</span>';
-  document.getElementById('photoDialSection').style.display = 'none';
-  document.getElementById('photoStatusText').style.display = 'none';
-  document.getElementById('photoConfirmBtn').disabled = true;
-  document.getElementById('photoOverlay').classList.remove('hidden');
-  const fileInput = document.getElementById('photoFileInput');
-  fileInput.value = '';
-  fileInput.click();
-}
-
-function closePhotoModal(){
-  document.getElementById('photoOverlay').classList.add('hidden');
-  state.photo = { targetCode: null, intDigits: [], decDigits: [], imageDataUrl: null, rawOcrText: '' };
-}
-
-function handlePhotoFileSelected(file){
-  if(!file || !state.photo.targetCode) return;
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    state.photo.imageDataUrl = e.target.result;
-    document.getElementById('photoPreviewWrap').innerHTML = '<img src="'+state.photo.imageDataUrl+'" alt="撮影したメーター">';
-    runOcrOnCurrentPhoto();
-  };
-  reader.onerror = () => showToast('画像の読み込みに失敗しました');
-  reader.readAsDataURL(file);
-}
-
-async function runOcrOnCurrentPhoto(){
-  const statusEl = document.getElementById('photoStatusText');
-  statusEl.style.display = '';
-  statusEl.textContent = '数値を自動認識しています…（初回はライブラリのダウンロードに時間がかかります）';
-  document.getElementById('photoDialSection').style.display = 'none';
-  document.getElementById('photoConfirmBtn').disabled = true;
-
-  const targetCode = state.photo.targetCode;
-  let rawText = '';
-  try{
-    await loadTesseract();
-    const worker = await Tesseract.createWorker('eng');
-    // allow digits and both '.' and ',' as a decimal separator (some locales/fonts render either)
-    await worker.setParameters({ tessedit_char_whitelist: '0123456789.,' });
-    const { data } = await worker.recognize(state.photo.imageDataUrl);
-    await worker.terminate();
-    rawText = (data && data.text ? data.text : '');
-  }catch(e){
-    console.error('OCR failed', e);
-    rawText = '';
-  }
-
-  // the modal may have been cancelled or retargeted while OCR was running
-  if(state.photo.targetCode !== targetCode) return;
-
-  const config = defaultDigitConfigForCode(targetCode);
-  // look for the first number in the recognized text, with an optional decimal part
-  const match = rawText.replace(/,/g, '.').match(/([0-9]+)(?:\.([0-9]+))?/);
-  let intDigits, decDigits, rawDisplay = '';
-  if(match){
-    const recInt = match[1].slice(0, 8); // cap length to guard against OCR noise
-    const recDec = (match[2] || '').slice(0, 4);
-    rawDisplay = recInt + (recDec ? '.' + recDec : '');
-    intDigits = recInt.split('').map(Number);
-    decDigits = recDec.split('').map(Number);
-    statusEl.textContent = '自動認識結果を反映しました。誤りがあればダイヤルで修正してください。';
-  } else {
-    intDigits = new Array(config.intCount).fill(0);
-    decDigits = new Array(config.decCount).fill(0);
-    statusEl.textContent = '自動認識できませんでした（ネット未接続、または数値を読み取れませんでした）。ダイヤルで数値を入力してください。';
-  }
-  state.photo.intDigits = intDigits;
-  state.photo.decDigits = decDigits;
-  state.photo.rawOcrText = rawDisplay;
-  renderDigitDials();
-  document.getElementById('photoDialSection').style.display = '';
-  document.getElementById('photoConfirmBtn').disabled = false;
-}
-
-function digitWheelHtml(kind, idx, val){
-  return `
-    <div class="digit-wheel" data-kind="${kind}" data-idx="${idx}">
-      <button type="button" class="digit-up" data-kind="${kind}" data-idx="${idx}">▲</button>
-      <div class="digit-value">${val}</div>
-      <button type="button" class="digit-down" data-kind="${kind}" data-idx="${idx}">▼</button>
-    </div>`;
-}
-
-function renderDigitDials(){
-  document.getElementById('digitCountLabel').textContent = state.photo.intDigits.length + ' 桁';
-  document.getElementById('decimalCountLabel').textContent = state.photo.decDigits.length + ' 桁';
-  const row = document.getElementById('digitDialRow');
-  const intHtml = state.photo.intDigits.map((val, idx) => digitWheelHtml('int', idx, val)).join('');
-  const decHtml = state.photo.decDigits.length
-    ? '<div class="digit-wheel decimal-dot-wheel"><div class="decimal-dot-spacer"></div><div class="digit-value">.</div><div class="decimal-dot-spacer"></div></div>'
-      + state.photo.decDigits.map((val, idx) => digitWheelHtml('dec', idx, val)).join('')
-    : '';
-  row.innerHTML = intHtml + decHtml;
-  const rawEl = document.getElementById('ocrRawText');
-  rawEl.textContent = state.photo.rawOcrText ? ('自動認識結果: ' + state.photo.rawOcrText) : '';
-}
-
-function changeDigit(kind, idx, delta){
-  const arr = kind === 'dec' ? state.photo.decDigits : state.photo.intDigits;
-  arr[idx] = (arr[idx] + delta + 10) % 10;
-  renderDigitDials();
-}
-
-function changeDigitCount(kind, delta){
-  if(kind === 'dec'){
-    const digits = state.photo.decDigits;
-    if(delta > 0){
-      if(digits.length >= 4) return;
-      digits.push(0); // decimal precision grows on the right (least significant)
-    } else {
-      if(digits.length <= 0) return;
-      digits.pop();
-    }
-  } else {
-    const digits = state.photo.intDigits;
-    if(delta > 0){
-      if(digits.length >= 8) return;
-      digits.unshift(0); // meters are read left-to-right, so a new digit is added on the left (most significant)
-    } else {
-      if(digits.length <= 1) return;
-      digits.shift();
-    }
-  }
-  renderDigitDials();
-}
-
-async function confirmPhotoValue(){
-  const code = state.photo.targetCode;
-  if(!code) return;
-  const intStr = state.photo.intDigits.join('') || '0';
-  const decStr = state.photo.decDigits.join('');
-  const valueStr = decStr ? (intStr + '.' + decStr) : intStr;
-  const value = Number(valueStr);
-  const input = document.querySelector('.cur-input[data-code="'+code+'"]');
-  if(input) input.value = value;
-  await handleInputChange(code, String(value));
-  closePhotoModal();
-  showToast('撮影した値を入力しました');
 }
 
 function applySearchFilter(){
   const q = document.getElementById('searchBox').value.trim().toLowerCase();
+  const g = state.group;
+  const prop = state.propFilter[g] || '';
+  const pendingOnly = !!state.pendingOnly[g] && document.getElementById('propWrap').style.display !== 'none';
+  let shown = 0;
   document.querySelectorAll('#list .row').forEach(row => {
-    const hit = !q || row.getAttribute('data-search').includes(q);
+    let hit = !q || row.getAttribute('data-search').includes(q);
+    if(hit && prop && row.getAttribute('data-property') !== prop) hit = false;
+    if(hit && pendingOnly && row.getAttribute('data-entered') === '1' && !state.keepVisible[row.getAttribute('data-code')]) hit = false;
     row.classList.toggle('hidden', !hit);
+    if(hit) shown++;
   });
+  const emptyEl = document.getElementById('filterEmpty');
+  if(emptyEl){
+    const anyRows = document.querySelectorAll('#list .row').length > 0;
+    emptyEl.style.display = (anyRows && shown === 0) ? '' : 'none';
+    emptyEl.textContent = (pendingOnly && !q) ? 'この物件はすべて入力済みです。' : '該当するメーターがありません。';
+  }
 }
 
 // ---- manage screen ----
+function renderPropertyDatalist(){
+  const names = {};
+  ['20', 'matsu'].forEach(g => {
+    Object.values(METER_PROPERTY[g] || {}).forEach(n => { if(n) names[n] = true; });
+    const d = state.data[g];
+    if(d) d.meters.forEach(m => { const p = getMeterProperty(g, m); if(p) names[p] = true; });
+  });
+  document.getElementById('propertyList').innerHTML = Object.keys(names).map(n => '<option value="'+escapeHtml(n)+'">').join('');
+}
+
+function renderBaselineStatus(){
+  const d = state.data[state.group];
+  const el = document.getElementById('baselineStatus');
+  if(!el || !d) return;
+  const entered = d.meters.filter(m => isEntered(d.readings[m.code])).length;
+  const parts = [];
+  parts.push('前回の基準値更新: ' + (d.lastRolloverDate || '記録なし'));
+  if(entered > 0){
+    parts.push('未確定の検針値: ' + entered + '件（' + (d.lastExportDate ? '前回出力 ' + d.lastExportDate : 'CSV未出力') + '）');
+  } else {
+    parts.push('未確定の検針値はありません');
+  }
+  el.textContent = parts.join('\n');
+  el.style.whiteSpace = 'pre-wrap';
+  el.classList.toggle('pending', entered > 0);
+}
+
 function renderManage(){
+  renderPropertyDatalist();
+  renderBaselineStatus();
   const d = state.data[state.group];
   const el = document.getElementById('manageList');
   if(d.meters.length === 0){
@@ -1380,6 +1267,7 @@ function renderManage(){
         <div class="form-row"><label>メーターコード</label><input type="text" class="e-code" value="${escapeHtml(m.code)}"></div>
         <div class="form-row"><label>メーター名称</label><input type="text" class="e-name" value="${escapeHtml(m.name)}"></div>
         <div class="form-row"><label>メーター略称</label><input type="text" class="e-abbr" value="${escapeHtml(m.abbr)}"></div>
+        <div class="form-row"><label>物件名</label><input type="text" class="e-property" list="propertyList" value="${escapeHtml(getMeterProperty(state.group, m))}"></div>
         <div class="form-row"><label>種別</label>
           <select class="e-type">
             <option value="1" ${m.type==='1'?'selected':''}>電灯</option>
@@ -1545,9 +1433,30 @@ async function confirmExport(){
 
   const d = state.data[state.group];
   d.lastExportDate = dateVal;
+  d.changedSinceExport = false;
   await saveGroup(state.group, d);
   renderLastExport();
+  showToast('CSV出力済み（基準値は未更新）');
+}
 
+function openRolloverModal(){
+  const d = state.data[state.group];
+  const entered = d.meters.filter(m => isEntered(d.readings[m.code])).length;
+  if(entered === 0){ showToast('基準値にできる検針値がありません'); return; }
+  const missing = d.meters.length - entered;
+  let html = '<div class="warn-box" style="background:var(--accent-soft);color:var(--ink);">' +
+    escapeHtml(GROUP_LABEL[state.group]) + '<br>入力済み ' + entered + '件 / 全' + d.meters.length + '件</div>';
+  if(!d.lastExportDate){
+    html += '<div class="warn-box error-box">まだCSVを出力していません。エクセルで確認してから更新してください。</div>';
+  } else if(d.changedSinceExport){
+    html += '<div class="warn-box error-box">最後のCSV出力（' + escapeHtml(d.lastExportDate) + '）のあとに検針値・備考が変更されています。CSVを出力し直して、エクセルの内容と一致しているか確認してください。</div>';
+  }
+  if(missing > 0){
+    html += '<div class="warn-box">' + missing + '件は未入力です。未入力のメーターは前回値のまま据え置かれます。</div>';
+  }
+  document.getElementById('rolloverInfo').innerHTML = html;
+  document.getElementById('rolloverAckCheck').checked = false;
+  document.getElementById('rolloverYes').disabled = true;
   document.getElementById('rolloverOverlay').classList.remove('hidden');
 }
 
@@ -1567,10 +1476,15 @@ async function doRollover(yes){
         r.note = '';
       }
     });
+    const now = new Date();
+    d.lastRolloverDate = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0');
+    d.changedSinceExport = false;
+    state.keepVisible = {};
     await saveGroup(state.group, d);
     renderList();
     renderProgress();
-    showToast('次回の基準として保存しました');
+    renderBaselineStatus();
+    showToast('基準値を更新しました');
   }
 }
 
@@ -1602,6 +1516,7 @@ function showListView(){
   document.getElementById('manageScreen').style.display = 'none';
   document.getElementById('listBar').style.display = 'flex';
   document.getElementById('manageBar').style.display = 'none';
+  renderPropFilter();
 }
 function showManageView(){
   document.getElementById('list').style.display = 'none';
@@ -1609,17 +1524,20 @@ function showManageView(){
   document.getElementById('manageScreen').style.display = '';
   document.getElementById('listBar').style.display = 'none';
   document.getElementById('manageBar').style.display = 'flex';
+  document.getElementById('propWrap').style.display = 'none';
   renderManage();
 }
 
 async function switchGroup(g){
   state.group = g;
   await loadGroup(g);
+  state.keepVisible = {};
+  document.getElementById('searchBox').value = '';
   renderTabs();
   renderLastExport();
   renderProgress();
   renderList();
-  document.getElementById('searchBox').value = '';
+  if(document.getElementById('manageScreen').style.display !== 'none') renderManage();
 }
 
 function testStorageAvailable(){
@@ -1666,31 +1584,6 @@ async function bootApp(){
       handleNoteChange(e.target.getAttribute('data-code'), e.target.value);
     }
   });
-  document.getElementById('list').addEventListener('click', (e)=>{
-    const camBtn = e.target.closest('.camera-btn');
-    if(camBtn) openPhotoModal(camBtn.getAttribute('data-code'));
-  });
-
-  document.getElementById('photoFileInput').addEventListener('change', (e)=>{
-    const file = e.target.files && e.target.files[0];
-    handlePhotoFileSelected(file);
-  });
-  document.getElementById('photoRetakeBtn').addEventListener('click', ()=>{
-    document.getElementById('photoFileInput').value = '';
-    document.getElementById('photoFileInput').click();
-  });
-  document.getElementById('photoCancelBtn').addEventListener('click', closePhotoModal);
-  document.getElementById('photoConfirmBtn').addEventListener('click', confirmPhotoValue);
-  document.getElementById('digitCountMinus').addEventListener('click', ()=>changeDigitCount('int', -1));
-  document.getElementById('digitCountPlus').addEventListener('click', ()=>changeDigitCount('int', 1));
-  document.getElementById('decimalCountMinus').addEventListener('click', ()=>changeDigitCount('dec', -1));
-  document.getElementById('decimalCountPlus').addEventListener('click', ()=>changeDigitCount('dec', 1));
-  document.getElementById('digitDialRow').addEventListener('click', (e)=>{
-    const upBtn = e.target.closest('.digit-up');
-    const downBtn = e.target.closest('.digit-down');
-    if(upBtn) changeDigit(upBtn.getAttribute('data-kind'), Number(upBtn.getAttribute('data-idx')), 1);
-    if(downBtn) changeDigit(downBtn.getAttribute('data-kind'), Number(downBtn.getAttribute('data-idx')), -1);
-  });
 
   function refreshAfterSortChange(){
     renderSortButtons();
@@ -1722,8 +1615,26 @@ async function bootApp(){
     document.getElementById('exportConfirm').disabled = !e.target.checked;
   });
 
-  document.getElementById('rolloverYes').addEventListener('click', ()=>doRollover(true));
+  document.getElementById('btnRollover').addEventListener('click', openRolloverModal);
+  document.getElementById('rolloverAckCheck').addEventListener('change', (e)=>{
+    document.getElementById('rolloverYes').disabled = !e.target.checked;
+  });
+  document.getElementById('rolloverBackup').addEventListener('click', exportBackup);
+  document.getElementById('rolloverYes').addEventListener('click', ()=>{
+    if(!document.getElementById('rolloverAckCheck').checked) return;
+    doRollover(true);
+  });
   document.getElementById('rolloverNo').addEventListener('click', ()=>doRollover(false));
+
+  document.getElementById('propChips').addEventListener('click', (e)=>{
+    const b = e.target.closest('.prop-chip');
+    if(b) setPropFilter(b.getAttribute('data-prop'));
+  });
+  document.getElementById('pendingOnlyCheck').addEventListener('change', (e)=>{
+    state.pendingOnly[state.group] = e.target.checked;
+    state.keepVisible = {};
+    applySearchFilter();
+  });
 
   document.getElementById('btnExportBackup').addEventListener('click', exportBackup);
   document.getElementById('btnImportBackup').addEventListener('click', ()=>{
@@ -1749,6 +1660,8 @@ async function bootApp(){
     document.getElementById('addCode').value = '';
     document.getElementById('addName').value = '';
     document.getElementById('addAbbr').value = '';
+    document.getElementById('addProperty').value = state.propFilter[state.group] || '';
+    renderPropertyDatalist();
     document.getElementById('addType').value = '1';
     document.getElementById('addOrder').value = '';
     document.getElementById('addDigits').value = '';
@@ -1767,6 +1680,7 @@ async function bootApp(){
       code: document.getElementById('addCode').value.trim(),
       name: document.getElementById('addName').value.trim(),
       abbr: document.getElementById('addAbbr').value.trim(),
+      property: document.getElementById('addProperty').value.trim(),
       type: document.getElementById('addType').value,
       order: orderRaw === '' ? null : Number(orderRaw),
       digits: digitsRaw === '' ? null : Number(digitsRaw),
@@ -1807,6 +1721,7 @@ async function bootApp(){
         code: item.querySelector('.e-code').value.trim(),
         name: item.querySelector('.e-name').value.trim(),
         abbr: item.querySelector('.e-abbr').value.trim(),
+        property: item.querySelector('.e-property').value.trim(),
         type: item.querySelector('.e-type').value,
         order: orderRaw === '' ? null : Number(orderRaw),
         digits: digitsRaw === '' ? null : Number(digitsRaw),
